@@ -13,17 +13,6 @@ from sklearn.metrics import accuracy_score
 from sklearn.metrics import plot_confusion_matrix
 import matplotlib.pyplot as plt
 
-
-#%%
-def merge_dicts(*dict_args):
-    """
-    Given any number of dictionaries, shallow copy and merge into a new dict,
-    precedence goes to key-value pairs in latter dictionaries.
-    """
-    result = {}
-    for dictionary in dict_args:
-        result.update(dictionary)
-    return result
 #%%
 def extract_features(num_pnm_data,fecha_macs,pnm_data):
     #%% generar arreglo para el set de entrenamiento
@@ -50,9 +39,12 @@ def extract_features(num_pnm_data,fecha_macs,pnm_data):
         weights=np.flip(np.arange(1,len(mac_data)+1))
         wma=mac_data.iloc[:,3:16].apply(lambda x: np.dot(x,weights)/sum(weights))
         #%% guardar mac,fecha,metricas en un dict
-    
+        fila=mac_data.iloc[0,[0,2]].tolist()+ mean.tolist()+var.tolist()+wma.tolist()
+        keys=[i for i in range(len(fila))]
+        data={k: v for k,v in zip(keys,fila)}
+        dictionary_list.append(data)
         #%% guardar fecha y mac_address
-        pdb.set_trace()
+        #pdb.set_trace()
         set1.iloc[i,0:2]=mac_data.iloc[0,[0,2]]
         #%% guardar mean, var, wma, mean-wma en set1
         set1.iloc[i,2:2+len(mean)]=mean
@@ -60,7 +52,7 @@ def extract_features(num_pnm_data,fecha_macs,pnm_data):
         set1.iloc[i,2+2*len(mean):2+3*len(mean)]=wma
         #set1.iloc[i,2+3*len(mean):2+4*len(mean)]=mean-wma
     # retornar arreglo con las features calculadas
-    return set1
+    return set1, dictionary_list
 
 #%% =============================================================================  
 start = time.time()
@@ -77,7 +69,7 @@ train=pd.concat(df_train)
 test=pd.concat(df_test)
 #%%
 #sub1=df2
-train1=train.sample(8000)
+train1=train.sample(500)
 test1=test.sample(500)
 #%% drop some columns
 train1=train1.drop(['FECHA_AFECTACION_00'], inplace=False, axis=1)
@@ -94,7 +86,7 @@ fecha_macs_test=test1.loc[:,['DATE_FH',
 start = time.time()
 print('Inicio ejecucion feature engineering')
 num_pnm_data=13
-train1=extract_features(num_pnm_data,fecha_macs_train,train1)
+train1, d1=extract_features(num_pnm_data,fecha_macs_train,train1)
 #test1=extract_features(num_pnm_data,fecha_macs_test,test1)
 print('Fin ejecucion feature engineering')
 end = time.time()
