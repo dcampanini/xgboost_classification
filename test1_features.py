@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from numpy import loadtxt
 import time
+import pdb
 import pathlib
 import pickle
 from datetime import datetime
@@ -10,13 +11,25 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import plot_confusion_matrix
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
+
+
+#%%
+def merge_dicts(*dict_args):
+    """
+    Given any number of dictionaries, shallow copy and merge into a new dict,
+    precedence goes to key-value pairs in latter dictionaries.
+    """
+    result = {}
+    for dictionary in dict_args:
+        result.update(dictionary)
+    return result
 #%%
 def extract_features(num_pnm_data,fecha_macs,pnm_data):
     #%% generar arreglo para el set de entrenamiento
-    field_num=3+4*num_pnm_data # =date+mac+clase + num_metrica*num_pnm_data
+    field_num=3+3*num_pnm_data # =date+mac+clase + num_metrica*num_pnm_data
     set1= pd.DataFrame(0, index=range(len(fecha_macs)), columns=range(field_num))
+    dictionary_list = []
     # %% calcular metricas y armar dataset de entrenamiento
     for i in range(len(fecha_macs)):
         #i=3
@@ -36,13 +49,16 @@ def extract_features(num_pnm_data,fecha_macs,pnm_data):
         # %% calcular weighted moving average (wma)
         weights=np.flip(np.arange(1,len(mac_data)+1))
         wma=mac_data.iloc[:,3:16].apply(lambda x: np.dot(x,weights)/sum(weights))
+        #%% guardar mac,fecha,metricas en un dict
+    
         #%% guardar fecha y mac_address
+        pdb.set_trace()
         set1.iloc[i,0:2]=mac_data.iloc[0,[0,2]]
         #%% guardar mean, var, wma, mean-wma en set1
         set1.iloc[i,2:2+len(mean)]=mean
         set1.iloc[i,2+len(mean):2+2*len(mean)]=var
         set1.iloc[i,2+2*len(mean):2+3*len(mean)]=wma
-        set1.iloc[i,2+3*len(mean):2+4*len(mean)]=mean-wma
+        #set1.iloc[i,2+3*len(mean):2+4*len(mean)]=mean-wma
     # retornar arreglo con las features calculadas
     return set1
 
@@ -61,8 +77,8 @@ train=pd.concat(df_train)
 test=pd.concat(df_test)
 #%%
 #sub1=df2
-train1=train.sample(1000)
-test1=test.sample(1000)
+train1=train.sample(8000)
+test1=test.sample(500)
 #%% drop some columns
 train1=train1.drop(['FECHA_AFECTACION_00'], inplace=False, axis=1)
 test1=test1.drop(['FECHA_AFECTACION_00'], inplace=False, axis=1)
@@ -71,73 +87,27 @@ test1=test1.drop(['FECHA_AFECTACION_00'], inplace=False, axis=1)
 #macs=sub1_ft.loc[:,['MAC_ADDRESS']].drop_duplicates().sort_values(by=['MAC_ADDRESS'])
 #%% extraer dataframe  con (fecha,mac_address)
 fecha_macs_train=train1.loc[:,['DATE_FH',
-            'MAC_ADDRESS']].drop_duplicates().sort_values(by=['MAC_ADDRESS',
-            'DATE_FH'])
+            'MAC_ADDRESS']].drop_duplicates().sort_values(by=['MAC_ADDRESS','DATE_FH'])
 fecha_macs_test=test1.loc[:,['DATE_FH',
-            'MAC_ADDRESS']].drop_duplicates().sort_values(by=['MAC_ADDRESS',
-            'DATE_FH'])
+            'MAC_ADDRESS']].drop_duplicates().sort_values(by=['MAC_ADDRESS','DATE_FH'])
 # %%
+start = time.time()
 print('Inicio ejecucion feature engineering')
 num_pnm_data=13
 train1=extract_features(num_pnm_data,fecha_macs_train,train1)
-test1=extract_features(num_pnm_data,fecha_macs_test,test1)
+#test1=extract_features(num_pnm_data,fecha_macs_test,test1)
 print('Fin ejecucion feature engineering')
-#%%
-set2=train1.dropna()
-set3=test1.dropna()
-#%% =============================================================================  
-# Entrenar modelo 
-print('Inicio entrenamiento modelo')
-x_train=set2.iloc[:,2:54]
-y_train=set2.iloc[:,54]
-x_test=set3.iloc[:,2:54]
-y_test=set3.iloc[:,54]
-#%% fit model on training data
-model = XGBClassifier()
-model.fit(x_train, y_train,verbose=True)
-print('Fin entrenamiento modelo')
-#%% make predictions for test data
-y_pred = model.predict(x_test)
-y_pred2=np.zeros(x_test.shape[0])
-probas=model.predict_proba(x_test)
-#%%
-for i in range(len(probas)) :
-    if probas[:,1][i] >0.9:
-        y_pred2[i]=1 
-    else:
-        y_pred2[i]=0
-# confusion matrix
-cm=confusion_matrix(y_test, y_pred2)
-tn, fp, fn, tp=confusion_matrix(y_test, y_pred2).ravel()
-print('tp=',tp,'fp=',fp,'tn=',tn,'fn=',fn)
-#%%
-predictions = [round(value) for value in y_pred]
-#%% evaluate predictions
-accuracy = accuracy_score(y_test, y_pred)
-print("Accuracy: %.2f%%" % (accuracy * 100.0))
-print('Fin ejecucion modelo')
-# %%
 end = time.time()
-elapsed = (end - start)
-print('Tiempo en segundos',elapsed,'Tiempo en minutos',elapsed/60)
-#%% =============================================================================  
-#%% save results and model
-#make a directory
-today = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-dir=pathlib.Path.cwd().joinpath('results'+today)
-pathlib.Path(dir).mkdir(parents=True, exist_ok=True) 
-#%% save real labels and predicted
-y_test_np=y_test.to_numpy()
-output=pd.DataFrame({'real':y_test,'pred':y_pred})
-output.to_csv(dir.joinpath('results.csv'))
-# save accuracy
-np.savetxt(dir.joinpath('accuracy.txt'),np.resize(np.array(accuracy),(1,1)))
-#%% save model
-model.save_model(dir.joinpath(today+'.model'))
-pickle.dump(model, open(dir.joinpath(today+'.pickle.dat'), "wb"))
-# %% confusion matrix 
-plot_confusion_matrix(model, x_test, y_test,
-                    display_labels=['reclama', 'no reclama'],
-                    cmap=plt.cm.Blues) 
-plt.savefig(dir.joinpath('confusion_matrix.jpg'),dpi=300)
-#plt.show()
+print(end - start)
+# %%
+import random
+start_time = time.time()
+dictionary_list = []
+for i in range(0, 10, 1):
+    dictionary_data = {k: random.random() for k in range(30)}
+    dictionary_list.append(dictionary_data)
+
+df_final = pd.DataFrame.from_dict(dictionary_list)
+
+end_time = time.time()
+print('Execution time = %.6f seconds' % (end_time-start_time))
