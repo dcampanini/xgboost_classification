@@ -14,12 +14,10 @@ from sklearn.metrics import plot_confusion_matrix
 import matplotlib.pyplot as plt
 
 #%%
-def extract_features(num_pnm_data,fecha_macs,pnm_data):
+def extract_features(fecha_macs,pnm_data):
     #%% generar arreglo para el set de entrenamiento
-    field_num=3+3*num_pnm_data # =date+mac+clase + num_metrica*num_pnm_data
-    set1= pd.DataFrame(0, index=range(len(fecha_macs)), columns=range(field_num))
     dictionary_list = []
-    # %% calcular metricas y armar dataset de entrenamiento
+    # %% calcular metricas y armar dataset con features
     for i in range(len(fecha_macs)):
         #i=3
         # extraer para una mac y fecha especifica, todos los datos disponibles
@@ -28,31 +26,26 @@ def extract_features(num_pnm_data,fecha_macs,pnm_data):
         & (pnm_data['DATE_FH']==fecha_macs.iloc[i][0])]
         #% etiquetar 
         if mac_data['ESTADO'].iloc[0]=='CERRADO':
-            set1.iloc[i,-1]=1
+            label=1
         else:
-            set1.iloc[i,-1]=0
-
+            label=0
         # % calcular mean y var
         mean=mac_data.iloc[:,3:16].mean()
         var=mac_data.iloc[:,3:16].var()
         # %% calcular weighted moving average (wma)
         weights=np.flip(np.arange(1,len(mac_data)+1))
         wma=mac_data.iloc[:,3:16].apply(lambda x: np.dot(x,weights)/sum(weights))
-        #%% guardar mac,fecha,metricas en un dict
-        fila=mac_data.iloc[0,[0,2]].tolist()+ mean.tolist()+var.tolist()+wma.tolist()
+        #%% guardar mac,fecha,features en un dict
+        # fila = lista con las mac,fecha,features
+        fila=mac_data.iloc[0,[0,2]].tolist()+ mean.tolist()+\
+             var.tolist()+wma.tolist()+[label]
+        # trasformar fila en un dictionary
         keys=[i for i in range(len(fila))]
         data={k: v for k,v in zip(keys,fila)}
+        # append the dictionary to  dictionary_list
         dictionary_list.append(data)
-        #%% guardar fecha y mac_address
-        #pdb.set_trace()
-        set1.iloc[i,0:2]=mac_data.iloc[0,[0,2]]
-        #%% guardar mean, var, wma, mean-wma en set1
-        set1.iloc[i,2:2+len(mean)]=mean
-        set1.iloc[i,2+len(mean):2+2*len(mean)]=var
-        set1.iloc[i,2+2*len(mean):2+3*len(mean)]=wma
-        #set1.iloc[i,2+3*len(mean):2+4*len(mean)]=mean-wma
     # retornar arreglo con las features calculadas
-    return set1, dictionary_list
+    return dictionary_list
 
 #%% =============================================================================  
 start = time.time()
@@ -69,7 +62,7 @@ train=pd.concat(df_train)
 test=pd.concat(df_test)
 #%%
 #sub1=df2
-train1=train.sample(500)
+train1=train.sample(1000)
 test1=test.sample(500)
 #%% drop some columns
 train1=train1.drop(['FECHA_AFECTACION_00'], inplace=False, axis=1)
@@ -85,21 +78,17 @@ fecha_macs_test=test1.loc[:,['DATE_FH',
 # %%
 start = time.time()
 print('Inicio ejecucion feature engineering')
-num_pnm_data=13
-train1, d1=extract_features(num_pnm_data,fecha_macs_train,train1)
+d1=extract_features(fecha_macs_train,train1)
 #test1=extract_features(num_pnm_data,fecha_macs_test,test1)
+test1 = pd.DataFrame.from_dict(d1)
 print('Fin ejecucion feature engineering')
 end = time.time()
 print(end - start)
+
+#%%
+set3=test1.dropna()
+#%% Entrenar modelo 
+print('Inicio entrenamiento modelo')
+x_test=set3.iloc[:,2:41]
+y_test=set3.iloc[:,41]
 # %%
-import random
-start_time = time.time()
-dictionary_list = []
-for i in range(0, 10, 1):
-    dictionary_data = {k: random.random() for k in range(30)}
-    dictionary_list.append(dictionary_data)
-
-df_final = pd.DataFrame.from_dict(dictionary_list)
-
-end_time = time.time()
-print('Execution time = %.6f seconds' % (end_time-start_time))
